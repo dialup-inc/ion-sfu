@@ -35,7 +35,9 @@ message JoinReply {
 }
 
 message Trickle {
-    string init = 1;
+    string sdp = 1;
+    int32 sdp_m_line_index = 2;
+    string sdp_mid = 3;
 }
 
 message SessionDescription {

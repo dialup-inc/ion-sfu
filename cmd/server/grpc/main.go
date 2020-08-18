@@ -2,7 +2,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -217,15 +216,23 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 					// Gathering done
 					return
 				}
-				bytes, err := json.Marshal(c.ToJSON())
-				if err != nil {
-					log.Errorf("OnIceCandidate error %s", err)
+
+				candidateInit := c.ToJSON()
+				sdpMid := ""
+				if candidateInit.SDPMid != nil {
+					sdpMid = *candidateInit.SDPMid
+				}
+				sdpMLineIndex := int32(-1)
+				if candidateInit.SDPMLineIndex != nil {
+					sdpMLineIndex = int32(*candidateInit.SDPMLineIndex)
 				}
 
 				err = stream.Send(&pb.SignalReply{
 					Payload: &pb.SignalReply_Trickle{
 						Trickle: &pb.Trickle{
-							Init: string(bytes),
+							Sdp:           candidateInit.Candidate,
+							SdpMid:        sdpMid,
+							SdpMLineIndex: sdpMLineIndex,
 						},
 					},
 				})
@@ -363,10 +370,21 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 				return status.Errorf(codes.FailedPrecondition, "%s", errNoPeer)
 			}
 
-			var candidate webrtc.ICECandidateInit
-			err := json.Unmarshal([]byte(payload.Trickle.Init), &candidate)
-			if err != nil {
-				log.Errorf("error parsing ice candidate: %v", err)
+			var sdpMid *string = nil
+			if payload.Trickle.SdpMid != "" {
+				sdpMid = &payload.Trickle.SdpMid
+			}
+
+			var sdpMLineIndex *uint16 = nil
+			if payload.Trickle.SdpMLineIndex != -1 {
+				val := uint16(payload.Trickle.SdpMLineIndex)
+				sdpMLineIndex = &val
+			}
+
+			candidate := webrtc.ICECandidateInit{
+				Candidate:     payload.Trickle.Sdp,
+				SDPMid:        sdpMid,
+				SDPMLineIndex: sdpMLineIndex,
 			}
 
 			if err := peer.AddICECandidate(candidate); err != nil {
