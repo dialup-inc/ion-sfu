@@ -77,7 +77,13 @@ func (e *MediaEngine) PopulateFromSDP(sd webrtc.SessionDescription) error {
 		}
 	}
 
-	// Use defaults for codecs not provided in sdp
+	e.PopulateDefaults()
+
+	return nil
+}
+
+// PopulateDefaults sets defaults for codecs not provided in sdp
+func (e *MediaEngine) PopulateDefaults() {
 	if len(e.GetCodecsByName(webrtc.Opus)) == 0 {
 		codec := webrtc.NewRTPOpusCodec(webrtc.DefaultPayloadTypeOpus, 48000)
 		e.RegisterCodec(codec)
@@ -97,6 +103,4 @@ func (e *MediaEngine) PopulateFromSDP(sd webrtc.SessionDescription) error {
 		codec := webrtc.NewRTPH264CodecExt(webrtc.DefaultPayloadTypeH264, 90000, rtcpfb, "")
 		e.RegisterCodec(codec)
 	}
-
-	return nil
 }

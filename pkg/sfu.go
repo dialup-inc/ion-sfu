@@ -115,7 +115,7 @@ func (s *SFU) getSession(id string) *Session {
 }
 
 // NewWebRTCTransport creates a new WebRTCTransport that is a member of a session
-func (s *SFU) NewWebRTCTransport(sid string, offer webrtc.SessionDescription) (*WebRTCTransport, error) {
+func (s *SFU) NewWebRTCTransport(sid string, offer *webrtc.SessionDescription) (*WebRTCTransport, error) {
 	session := s.getSession(sid)
 
 	if session == nil {

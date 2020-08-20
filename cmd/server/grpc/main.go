@@ -169,8 +169,7 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 
 		switch payload := in.Payload.(type) {
 		case *pb.SignalRequest_Join:
-			var answer webrtc.SessionDescription
-			log.Infof("signal->join called:\n%v", string(payload.Join.Offer.Sdp))
+			log.Infof("signal->join called:\n%v", string(payload.Join))
 
 			if peer != nil {
 				// already joined
@@ -178,12 +177,7 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 				return status.Errorf(codes.FailedPrecondition, "peer already exists")
 			}
 
-			offer := webrtc.SessionDescription{
-				Type: webrtc.SDPTypeOffer,
-				SDP:  string(payload.Join.Offer.Sdp),
-			}
-
-			peer, err = s.sfu.NewWebRTCTransport(payload.Join.Sid, offer)
+			peer, err = s.sfu.NewWebRTCTransport(payload.Join.Sid, nil)
 			if err != nil {
 				log.Errorf("join error: %v", err)
 				return status.Errorf(codes.InvalidArgument, "join error %s", err)
@@ -191,22 +185,16 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 
 			log.Infof("peer %s join session %s", peer.ID(), payload.Join.Sid)
 
-			err = peer.SetRemoteDescription(offer)
+			offer, err := peer.CreateOffer()
 			if err != nil {
-				log.Errorf("join error: %v", err)
-				return status.Errorf(codes.Internal, "join error %s", err)
+				log.Errorf("CreateOffer error: %v", err)
+				return status.Errorf(codes.Internal, "CreateOffer error %s", err)
 			}
 
-			answer, err := peer.CreateAnswer()
+			err = peer.SetLocalDescription(offer)
 			if err != nil {
-				log.Errorf("join error: %v", err)
-				return status.Errorf(codes.Internal, "join error %s", err)
-			}
-
-			err = peer.SetLocalDescription(answer)
-			if err != nil {
-				log.Errorf("join error: %v", err)
-				return status.Errorf(codes.Internal, "join error %s", err)
+				log.Errorf("SetLocalDescription error: %v", err)
+				return status.Errorf(codes.Internal, "SetLocalDescription error %s", err)
 			}
 
 			// Notify user of trickle candidates
@@ -255,8 +243,8 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 				}
 
 				err = stream.Send(&pb.SignalReply{
-					Payload: &pb.SignalReply_Negotiate{
-						Negotiate: &pb.SessionDescription{
+					Payload: &pb.SignalReply_Offer{
+						Offer: &pb.SessionDescription{
 							Type: offer.Type.String(),
 							Sdp:  []byte(offer.SDP),
 						},
@@ -272,9 +260,9 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 				Payload: &pb.SignalReply_Join{
 					Join: &pb.JoinReply{
 						Pid: pid,
-						Answer: &pb.SessionDescription{
-							Type: answer.Type.String(),
-							Sdp:  []byte(answer.SDP),
+						Offer: &pb.SessionDescription{
+							Type: offer.Type.String(),
+							Sdp:  []byte(offer.SDP),
 						},
 					},
 				},
