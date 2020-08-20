@@ -7,7 +7,6 @@ import (
 
 	"github.com/lucsky/cuid"
 	"github.com/pion/ion-sfu/pkg/log"
-	"github.com/pion/ion-sfu/pkg/util"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"
 )
@@ -176,12 +175,7 @@ func (p *WebRTCTransport) OnICECandidate(f func(c *webrtc.ICECandidate)) {
 
 // OnNegotiationNeeded handler
 func (p *WebRTCTransport) OnNegotiationNeeded(f func()) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	var debounced = util.NewDebouncer(500 * time.Millisecond)
-	p.onNegotiationNeededHandler = func() {
-		debounced(f)
-	}
+	p.pc.OnNegotiationNeeded(f)
 }
 
 // OnTrack handler
