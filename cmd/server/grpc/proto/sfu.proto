@@ -13,6 +13,7 @@ message SignalRequest {
         JoinRequest join = 1;
         SessionDescription negotiate = 2;
         Trickle trickle = 3;
+        Ping ping = 4;
     }
 }
 
@@ -21,8 +22,11 @@ message SignalReply {
         JoinReply join = 1;
         SessionDescription negotiate = 2;
         Trickle trickle = 3;
+        Ping ping = 4;
     }
 }
+
+message Ping {}
 
 message JoinRequest {
     string sid = 1;
