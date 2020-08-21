@@ -18,6 +18,7 @@ const _ = grpc.SupportPackageIsVersion6
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type SFUClient interface {
 	Signal(ctx context.Context, opts ...grpc.CallOption) (SFU_SignalClient, error)
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingRequest, error)
 }
 
 type sFUClient struct {
@@ -59,11 +60,21 @@ func (x *sFUSignalClient) Recv() (*SignalReply, error) {
 	return m, nil
 }
 
+func (c *sFUClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingRequest, error) {
+	out := new(PingRequest)
+	err := c.cc.Invoke(ctx, "/sfu.SFU/Ping", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SFUServer is the server API for SFU service.
 // All implementations must embed UnimplementedSFUServer
 // for forward compatibility
 type SFUServer interface {
 	Signal(SFU_SignalServer) error
+	Ping(context.Context, *PingRequest) (*PingRequest, error)
 	mustEmbedUnimplementedSFUServer()
 }
 
@@ -73,6 +84,9 @@ type UnimplementedSFUServer struct {
 
 func (*UnimplementedSFUServer) Signal(SFU_SignalServer) error {
 	return status.Errorf(codes.Unimplemented, "method Signal not implemented")
+}
+func (*UnimplementedSFUServer) Ping(context.Context, *PingRequest) (*PingRequest, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
 func (*UnimplementedSFUServer) mustEmbedUnimplementedSFUServer() {}
 
@@ -106,10 +120,33 @@ func (x *sFUSignalServer) Recv() (*SignalRequest, error) {
 	return m, nil
 }
 
+func _SFU_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SFUServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sfu.SFU/Ping",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SFUServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _SFU_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "sfu.SFU",
 	HandlerType: (*SFUServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ping",
+			Handler:    _SFU_Ping_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Signal",

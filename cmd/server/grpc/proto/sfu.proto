@@ -6,14 +6,16 @@ package sfu;
 
 service SFU {
     rpc Signal(stream SignalRequest) returns (stream SignalReply) {}
+    rpc Ping(PingRequest) returns (PingRequest) {}
 }
+
+message PingRequest {}
 
 message SignalRequest {
     oneof payload {
         JoinRequest join = 1;
         SessionDescription negotiate = 2;
         Trickle trickle = 3;
-        Ping ping = 4;
     }
 }
 
@@ -22,11 +24,8 @@ message SignalReply {
         JoinReply join = 1;
         SessionDescription negotiate = 2;
         Trickle trickle = 3;
-        Ping ping = 4;
     }
 }
-
-message Ping {}
 
 message JoinRequest {
     string sid = 1;
