@@ -8,9 +8,11 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 
 	sfu "github.com/pion/ion-sfu/pkg"
 	"github.com/pion/ion-sfu/pkg/log"
+	"github.com/pion/sdp/v2"
 	"github.com/pion/webrtc/v3"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -39,7 +41,8 @@ var (
 
 type server struct {
 	pb.UnimplementedSFUServer
-	sfu *sfu.SFU
+	sfu     *sfu.SFU
+	peerMap sync.Map
 }
 
 const (
@@ -117,7 +120,8 @@ func main() {
 	log.Infof("SFU Listening at %s", addr)
 	s := grpc.NewServer()
 	pb.RegisterSFUServer(s, &server{
-		sfu: sfu.NewSFU(conf.Config),
+		sfu:     sfu.NewSFU(conf.Config),
+		peerMap: sync.Map{},
 	})
 	if err := s.Serve(lis); err != nil {
 		log.Panicf("failed to serve: %v", err)
@@ -178,15 +182,28 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 				return status.Errorf(codes.FailedPrecondition, "peer already exists")
 			}
 
+			sd := &sdp.SessionDescription{}
+			if err := sd.Unmarshal(payload.Join.Offer.Sdp); err != nil {
+				log.Errorf("error parsing offer: %v", err)
+				return status.Errorf(codes.FailedPrecondition, "error parsing offer")
+			}
+
 			offer := webrtc.SessionDescription{
 				Type: webrtc.SDPTypeOffer,
 				SDP:  string(payload.Join.Offer.Sdp),
 			}
 
-			peer, err = s.sfu.NewWebRTCTransport(payload.Join.Sid, offer)
-			if err != nil {
-				log.Errorf("join error: %v", err)
-				return status.Errorf(codes.InvalidArgument, "join error %s", err)
+			existingPeer, peerFound := s.peerMap.Load(sd.Origin.SessionID)
+			if peerFound {
+				peer = existingPeer.(*sfu.WebRTCTransport)
+				log.Infof("existing peer %s re-joins session %s", peer.ID(), payload.Join.Sid)
+			} else {
+				peer, err = s.sfu.NewWebRTCTransport(payload.Join.Sid, offer)
+				if err != nil {
+					log.Errorf("join error: %v", err)
+					return status.Errorf(codes.InvalidArgument, "join error %s", err)
+				}
+				s.peerMap.Store(sd.Origin.SessionID, peer)
 			}
 
 			log.Infof("peer %s join session %s", peer.ID(), payload.Join.Sid)
@@ -209,64 +226,74 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 				return status.Errorf(codes.Internal, "join error %s", err)
 			}
 
-			// Notify user of trickle candidates
-			peer.OnICECandidate(func(c *webrtc.ICECandidate) {
-				if c == nil {
-					// Gathering done
-					return
-				}
+			if !peerFound {
+				// Notify user of trickle candidates
+				peer.OnICECandidate(func(c *webrtc.ICECandidate) {
+					if c == nil {
+						// Gathering done
+						return
+					}
 
-				candidateInit := c.ToJSON()
-				sdpMid := ""
-				if candidateInit.SDPMid != nil {
-					sdpMid = *candidateInit.SDPMid
-				}
-				sdpMLineIndex := int32(-1)
-				if candidateInit.SDPMLineIndex != nil {
-					sdpMLineIndex = int32(*candidateInit.SDPMLineIndex)
-				}
+					candidateInit := c.ToJSON()
+					sdpMid := ""
+					if candidateInit.SDPMid != nil {
+						sdpMid = *candidateInit.SDPMid
+					}
+					sdpMLineIndex := int32(-1)
+					if candidateInit.SDPMLineIndex != nil {
+						sdpMLineIndex = int32(*candidateInit.SDPMLineIndex)
+					}
 
-				err = stream.Send(&pb.SignalReply{
-					Payload: &pb.SignalReply_Trickle{
-						Trickle: &pb.Trickle{
-							Sdp:           candidateInit.Candidate,
-							SdpMid:        sdpMid,
-							SdpMLineIndex: sdpMLineIndex,
+					err = stream.Send(&pb.SignalReply{
+						Payload: &pb.SignalReply_Trickle{
+							Trickle: &pb.Trickle{
+								Sdp:           candidateInit.Candidate,
+								SdpMid:        sdpMid,
+								SdpMLineIndex: sdpMLineIndex,
+							},
 						},
-					},
-				})
-				if err != nil {
-					log.Errorf("OnIceCandidate error %s", err)
-				}
-			})
-
-			peer.OnNegotiationNeeded(func() {
-				log.Debugf("on negotiation needed called")
-				offer, err := peer.CreateOffer()
-				if err != nil {
-					log.Errorf("CreateOffer error: %v", err)
-					return
-				}
-
-				err = peer.SetLocalDescription(offer)
-				if err != nil {
-					log.Errorf("SetLocalDescription error: %v", err)
-					return
-				}
-
-				err = stream.Send(&pb.SignalReply{
-					Payload: &pb.SignalReply_Negotiate{
-						Negotiate: &pb.SessionDescription{
-							Type: offer.Type.String(),
-							Sdp:  []byte(offer.SDP),
-						},
-					},
+					})
+					if err != nil {
+						log.Errorf("OnIceCandidate error %s", err)
+					}
 				})
 
-				if err != nil {
-					log.Errorf("negotiation error %s", err)
-				}
-			})
+				peer.OnNegotiationNeeded(func() {
+					log.Debugf("on negotiation needed called")
+					offer, err := peer.CreateOffer()
+					if err != nil {
+						log.Errorf("CreateOffer error: %v", err)
+						return
+					}
+
+					err = peer.SetLocalDescription(offer)
+					if err != nil {
+						log.Errorf("SetLocalDescription error: %v", err)
+						return
+					}
+
+					err = stream.Send(&pb.SignalReply{
+						Payload: &pb.SignalReply_Negotiate{
+							Negotiate: &pb.SessionDescription{
+								Type: offer.Type.String(),
+								Sdp:  []byte(offer.SDP),
+							},
+						},
+					})
+
+					log.Infof("negotiation offer:\n%v", offer.SDP)
+
+					if err != nil {
+						log.Errorf("negotiation error %s", err)
+					}
+				})
+
+				peer.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+					if state == webrtc.PeerConnectionStateClosed {
+						s.peerMap.Delete(sd.Origin.SessionID)
+					}
+				})
+			}
 
 			err = stream.Send(&pb.SignalReply{
 				Payload: &pb.SignalReply_Join{
@@ -279,6 +306,8 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 					},
 				},
 			})
+
+			log.Infof("join answer:\n%v", answer.SDP)
 
 			if err != nil {
 				log.Errorf("error sending join response %s", err)
