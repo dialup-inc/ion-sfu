@@ -314,6 +314,9 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 				return status.Errorf(codes.Internal, "join error %s", err)
 			}
 
+		case *pb.SignalRequest_Ping:
+			fmt.Println("Received ping")
+
 		case *pb.SignalRequest_Negotiate:
 			if peer == nil {
 				return status.Errorf(codes.FailedPrecondition, "%s", errNoPeer)
