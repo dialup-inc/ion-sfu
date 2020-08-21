@@ -27,8 +27,9 @@ const (
 
 func main() {
 	var (
-		address = flag.String("addr", "localhost:50051", "sfu address")
-		sid     = flag.String("sid", "test", "session id to join")
+		address       = flag.String("addr", "localhost:50051", "sfu address")
+		sid           = flag.String("sid", "test", "session id to join")
+		audioFileName = flag.String("audio", "output.ogg", "ogg-opus audio file to stream")
 	)
 	flag.Parse()
 
@@ -36,11 +37,11 @@ func main() {
 	_, err := os.Stat(videoFileName)
 	haveVideoFile := !os.IsNotExist(err)
 
-	_, err = os.Stat(audioFileName)
+	_, err = os.Stat(*audioFileName)
 	haveAudioFile := !os.IsNotExist(err)
 
 	if !haveAudioFile && !haveVideoFile {
-		panic("Could not find `" + audioFileName + "` or `" + videoFileName + "`")
+		panic("Could not find `" + *audioFileName + "` or `" + videoFileName + "`")
 	}
 
 	// Set up a connection to the sfu server.
@@ -130,7 +131,7 @@ func main() {
 
 		go func() {
 			// Open a IVF file and start reading using our IVFReader
-			file, oggErr := os.Open(audioFileName)
+			file, oggErr := os.Open(*audioFileName)
 			if oggErr != nil {
 				panic(oggErr)
 			}
