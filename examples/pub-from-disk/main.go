@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	address       = "localhost:50051"
+	address       = "34.72.203.225:50051"
 	audioFileName = "output.ogg"
 	videoFileName = "output.ivf"
 )
@@ -223,6 +223,17 @@ func main() {
 		}
 
 		switch payload := reply.Payload.(type) {
+		case *sfu.SignalReply_Trickle:
+			var mLineIdx *uint16
+			if idx := payload.Trickle.SdpMLineIndex; idx >= 0 {
+				uintIdx := uint16(idx)
+				mLineIdx = &uintIdx
+			}
+			peerConnection.AddICECandidate(webrtc.ICECandidateInit{
+				Candidate:     payload.Trickle.Sdp,
+				SDPMLineIndex: mLineIdx,
+				SDPMid:        &payload.Trickle.SdpMid,
+			})
 		case *sfu.SignalReply_Join:
 			fmt.Printf("Got answer from sfu. Starting streaming for pid %s!\n", payload.Join.GetPid())
 			// Set the remote SessionDescription
