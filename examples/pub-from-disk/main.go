@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -20,12 +21,17 @@ import (
 )
 
 const (
-	address       = "34.72.203.225:50051"
 	audioFileName = "output.ogg"
 	videoFileName = "output.ivf"
 )
 
 func main() {
+	var (
+		address = flag.String("addr", "localhost:50051", "sfu address")
+		sid     = flag.String("sid", "test", "session id to join")
+	)
+	flag.Parse()
+
 	// Assert that we have an audio or video file
 	_, err := os.Stat(videoFileName)
 	haveVideoFile := !os.IsNotExist(err)
@@ -38,7 +44,7 @@ func main() {
 	}
 
 	// Set up a connection to the sfu server.
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.Dial(*address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -186,7 +192,6 @@ func main() {
 
 	<-gatherComplete
 
-	sid := os.Args[1]
 	ctx := context.Background()
 	client, err := c.Signal(ctx)
 
@@ -197,7 +202,7 @@ func main() {
 	err = client.Send(&sfu.SignalRequest{
 		Payload: &sfu.SignalRequest_Join{
 			Join: &sfu.JoinRequest{
-				Sid: sid,
+				Sid: *sid,
 				Offer: &sfu.SessionDescription{
 					Type: offer.Type.String(),
 					Sdp:  []byte(peerConnection.LocalDescription().SDP),
