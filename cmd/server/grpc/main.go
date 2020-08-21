@@ -185,6 +185,7 @@ func (s *server) Signal(stream pb.SFU_SignalServer) error {
 			sd := &sdp.SessionDescription{}
 			if err := sd.Unmarshal(payload.Join.Offer.Sdp); err != nil {
 				log.Errorf("error parsing offer: %v", err)
+				return status.Errorf(codes.FailedPrecondition, "error parsing offer")
 			}
 
 			offer := webrtc.SessionDescription{
